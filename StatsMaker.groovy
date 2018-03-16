@@ -20,35 +20,30 @@ import org.codehaus.jackson.node.ObjectNode
 import static groovy.json.JsonOutput.*
 
 def files = getFiles(args[0])
-println args[0]
-int numRecords = 0
 
-println "Number of Files:\t ${files.count{it}}"
+println "Number of Files:\t\t ${files.count{it}}"
 
 files.each{file ->	
-	println "Name:\t$file.path"
 	def reader = new Iso2709MarcRecordReader(file)
 	MarcRecordImpl record 
 	while(record = reader.readRecord()){
-		numRecords++
-		
-		printAllWithTag(696, {it.tag == '696'}, record, numRecords)
-		printAllWithTag(697, {it.tag == '697'}, record, numRecords)
-		printAllWithTag(698, {it.tag == '698'}, record, numRecords)
-		printAllWithTag(951, {it.tag == '951' && it.getIndicator(1)=='4'}, record, numRecords)
+		printAllMatchingCriteria("696", {it.tag == '696'}, record)
+		printAllMatchingCriteria("697", {it.tag == '697'}, record)
+		printAllMatchingCriteria("698", {it.tag == '698'}, record)
+		printAllMatchingCriteria("951", {it.tag == '951' && it.getIndicator(1)=='4'}, record)
 			
 	}
 }
 
 
-void printAllWithTag(int tag, def closure, def record, int numRecords){
-	def fieldsWithTag = record.datafields.findAll{it->it.tag=="$tag"}                             
+void printAllMatchingCriteria(String nameOfCriteria, def closure, def record){
+	def fieldsWithTag = record.datafields.findAll{it->closure}                             
 	if(fieldsWithTag){                                                                           
         	fieldsWithTag.each{fieldWithTag->                                                               
-                	print "$tag\t"                                                       
+                	print "$nameOfCriteria\t"                                                       
                 	print record.leader
 			print "\t"	
-			print record.controlfields.find{ it-> it.tag == '001'}.data         
+			print record.controlfields.find{ it-> it.tag == '001'}?.data         
                 	print "\t"     
 			print record.controlfields.find{ it-> it.tag == '006'}?.data
                         print "\t"
@@ -56,17 +51,15 @@ void printAllWithTag(int tag, def closure, def record, int numRecords){
                         print "\t"
                         print record.controlfields.find{ it-> it.tag == '008'}?.data			
 			print "\t"
-			print  prettyPrint(toJson(fieldWithTag.subfields.find{it->it.code=="a"}.data))                                                     
+			print fieldWithTag.subfields.find{it->it.code=="a"}?.data                                                     
            		print "\t"
-			print toJson(fieldWithTag.getIndicator(0))
+			print fieldWithTag.getIndicator(0)
 			print "\t"                	
-			print toJson(fieldWithTag.getIndicator(1))
-			println "\t$numRecords"
+			print fieldWithTag.getIndicator(1)
+			println ""
          	}                                                                           
 	}  
 }
-
-
 
 List<File> getFiles(String folderPath){
 	def list = []
@@ -75,42 +68,4 @@ List<File> getFiles(String folderPath){
 	  list << file
 	}
 	return list
-}
-
-ObjectNode toObjectNode(MarcRecordImpl record) {
-	ObjectMapper mapper = new ObjectMapper()        
-	def json = mapper.createObjectNode()
-        def fields = mapper.createArrayNode()
-        record.fields.each {
-            def field = mapper.createObjectNode()
-            if (it instanceof Controlfield) {
-                field.put(it.tag, it.data)
-            } else {
-                def datafield = mapper.createObjectNode()
-                datafield.put("ind1", "" + it.getIndicator(0))
-                datafield.put("ind2", "" + it.getIndicator(1))
-                def subfields = mapper.createArrayNode()
-                it.subfields.each {
-                    def subfield = mapper.createObjectNode()
-                    subfield.put(Character.toString(it.code), it.data) //normalizeString(it.data))
-                    subfields.add(subfield)
-                }
-                datafield.put("subfields", subfields)
-                field.put(it.tag, datafield)
-            }
-            fields.add(field)
-        }
-        json.put("leader", record.leader)
-        json.put("fields", fields)
-        return json
-}
-
-Map toJsonMap(MarcRecordImpl record) {
-	ObjectMapper mapper = new ObjectMapper()        
-	def node = toObjectNode(record)
-        return mapper.readValue(node, Map)
-}
-
-String toJSONString(MarcRecordImpl record) {
-        return toObjectNode(record).toString()
 }
