@@ -31,25 +31,7 @@ files.each{file ->
 	MarcRecordImpl record 
 	while(record = reader.readRecord()){
 		numRecords++
-/*		def f951 = record.datafields.findAll{it->it.tag=='951' && it.getIndicator(1)=='4'}
-		if(f951){
-			f951.each{fieldWithTag ->
-				print "951\t"
-				print record.controlfields.find{ it-> it.tag == '001'}.data
-				print "\t"
-				print record.controlfields.find{ it-> it.tag == '006'}.data
-                                print "\t"
-				print record.controlfields.find{ it-> it.tag == '008'}.data
-                                print "\t"
-				print  prettyPrint(toJson(fieldWithTag.subfields.find{it->it.code=="a"}.data))	
-				print "\t"
-                        	print toJson(fieldWithTag.getIndicator(0))
-                        	print "\t"
-                        	print toJson(fieldWithTag.getIndicator(1))
-				print "\t"
-				println numRecords
-			}
-		}*/
+		
 		printAllWithTag(696, {it.tag == '696'}, record, numRecords)
 		printAllWithTag(697, {it.tag == '697'}, record, numRecords)
 		printAllWithTag(698, {it.tag == '698'}, record, numRecords)
@@ -64,12 +46,16 @@ void printAllWithTag(int tag, def closure, def record, int numRecords){
 	if(fieldsWithTag){                                                                           
         	fieldsWithTag.each{fieldWithTag->                                                               
                 	print "$tag\t"                                                       
-                	print record.controlfields.find{ it-> it.tag == '001'}.data         
+                	print record.leader
+			print "\t"	
+			print record.controlfields.find{ it-> it.tag == '001'}.data         
                 	print "\t"     
-			print record.controlfields.find{ it-> it.tag == '006'}.data
+			print record.controlfields.find{ it-> it.tag == '006'}?.data
                         print "\t"
-                        print record.controlfields.find{ it-> it.tag == '008'}.data
+                        print record.controlfields.find{ it-> it.tag == '007'}?.data
                         print "\t"
+                        print record.controlfields.find{ it-> it.tag == '008'}?.data			
+			print "\t"
 			print  prettyPrint(toJson(fieldWithTag.subfields.find{it->it.code=="a"}.data))                                                     
            		print "\t"
 			print toJson(fieldWithTag.getIndicator(0))
