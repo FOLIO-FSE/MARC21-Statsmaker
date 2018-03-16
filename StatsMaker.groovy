@@ -30,7 +30,8 @@ files.each{file ->
 		printAllMatchingCriteria("696", {it.tag == '696'}, record)
 		printAllMatchingCriteria("697", {it.tag == '697'}, record)
 		printAllMatchingCriteria("698", {it.tag == '698'}, record)
-		printAllMatchingCriteria("951", {it.tag == '951' && it.getIndicator(1)=='4'}, record)
+		printAllMatchingCriteria("951", {it.tag == '951'}, record)
+		printAllMatchingCriteria("951-2-4", {it.tag == '951' && it.getIndicator(1)=='4'}, record)
 			
 	}
 }
