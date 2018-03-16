@@ -57,6 +57,10 @@ void printAllMatchingCriteria(String nameOfCriteria, def closure, def record){
 			print fieldWithTag.getIndicator(0)
 			print "\t"                	
 			print fieldWithTag.getIndicator(1)
+			print "\t"
+			print fieldWithTag.tag
+			print "\t"
+			print toJson(fieldWithTag.subfields)
 			println ""
          	}                                                                           
 	}  
