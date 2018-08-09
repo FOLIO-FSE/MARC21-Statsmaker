@@ -1,14 +1,13 @@
 import sys
 import time
-import pymarc
 import glob
-
-# No need in python3, right?
-# reload(sys)
-# sys.setdefaultencoding('utf-8')
+from pymarc import MARCReader
 
 
-def type_of_record(l06, l07, f008):
+def type_of_record(record):
+    l06 = record.leader[6]
+    l07 = record.leader[7]
+    f008 = (record['008'] and record['008'].data)
     if l06 in "a,t" and l07 not in "b,i,s":
         if f008[23] in "q,s,o":
             return 'Ebook'
@@ -33,23 +32,33 @@ def type_of_record(l06, l07, f008):
         return 'Unknown'
 
 
+def concatenate_subfields(field):
+    return (repr([x.encode('utf-8') for x in field.subfields]) if
+            field and field.subfields else '-')
+
+
 def print_field_and_record_data(name, record, field, record_index):
     print(name + '\t' + record.leader + '\t' +
-          (record['001'] and record['001'].dat) + '\t' +
-          (record['006'] and record['006'].data) + '\t' +
-          (record['007'] and record['007'].data) + '\t' +
-          (record['008'] and record['008'].data) + '\t' +
-          (field and field['a']) + '\t' +
-          (field and field.indicators[0]) + '\t' +
-          (field and field.indicators[1]) + '\t' +
-          (field and field.tag) + '\t' +
-          (field and field.subfields and repr([x.encode('utf-8') for x in field.subfields])) + '\t' +
-          (type_of_record(record.leader[6], record.leader[7], (record['008'] and record['008'].data))) + '\t' +
-          (record.title()) + '\t' +
-          ("Record_{}".format(record_index)) + '\t' +
-          (field and field['z']) + '\t' +
-          (record['907'] and record['907']['a']) + '\t' +
-          (record['907'] and record['907']['b']) + '\t')
+          (record['001'].data if '001' in record else '-') + '\t' +
+          (record['006'].data if '006' in record else '-') + '\t' +
+          (record['007'].data if '007' in record else '-') + '\t' +
+          (record['008'].data if '008' in record else '-') + '\t' +
+          (field['a'] if field and 'a' in field else '-') + '\t' +
+          (field['4'] if field and '4' in field else '-') + '\t' +
+          (field.indicators[0]
+           if field and field.indicators and len(field.indicators) > 0
+           else '-') + '\t' +
+          (field.indicators[1] if field and field.indicators and len(field.indicators) >1 else '-') + '\t' +
+          (field.tag if field else '-') + '\t' +
+          concatenate_subfields(field) + '\t' +
+          (type_of_record(record)) + '\t' +
+          (record.title() or '-') + '\t' +
+          ("Record_{}".format(record_index) or '-') + '\t' +
+          (field and field['z'] or '-') + '\t' +
+          (record['907']['a'] if '907' in record and 'a' in record['907']
+           else '-') + '\t' +
+          (record['907']['b'] if '907' in record and 'b' in record['907']
+           else '-') + '\t' )
 
 
 def print_fields_by_criteria(name, record, fields_to_print, record_index):
@@ -64,12 +73,10 @@ i = 0
 start = time.time()
 
 files = glob.glob(sys.argv[1])[::-1]
-bufsize = 0
-logFile = open(sys.argv[2], "w", bufsize)
+logFile = open(sys.argv[2], "w")
 logFile.write("{}".format(files))
 
 for f in files:
-    from pymarc import MARCReader
     with open(f, 'rb') as fh:
         reader = MARCReader(fh, 'rb')
         for rec in reader:
@@ -82,7 +89,13 @@ for f in files:
 #           print_fields_by_criteria("698", rec, rec.get_fields('698'), i)
 #  	    print_fields_by_criteria("951", rec, rec.get_fields('951'), i)
 # 	    print_fields_by_criteria("020", rec, rec.get_fields('020'), i)
-            print_fields_by_criteria("852", rec, rec.get_fields('852'), i)
+#            print_fields_by_criteria("852", rec, rec.get_fields('852'), i)
+            print_fields_by_criteria("ContributorType", rec, rec.get_fields('100'), i)
+            print_fields_by_criteria("ContributorType", rec, rec.get_fields('700'), i)
+            print_fields_by_criteria("Relationship", rec, rec.get_fields('110'), i)
+            print_fields_by_criteria("Relationship", rec, rec.get_fields('710'), i)
+            print_fields_by_criteria("Relationship", rec, rec.get_fields('111'), i)
+            print_fields_by_criteria("Relationship", rec, rec.get_fields('711'), i)
 
 logFile.write("{} records fetched in {} seconds".format(i,
                                                         (time.time() - start)))
