@@ -1,3 +1,5 @@
+NOTE! This is still work in progress. Please reach out for any questions.
+
 # MARC21-Statsmaker
 A Python script for surfacing different properties of  a MARC21 record dump making the result suitable to use in analytics tools like Tableau
 
