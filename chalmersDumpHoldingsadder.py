@@ -102,7 +102,7 @@ dupe_001s = set()
 # Open and read Sierra dump file
 with open(sierra_dump_path, 'rb') as sierra_dump:
     reader = MARCReader(sierra_dump, 'rb')
-    for sierra_record in reader
+    for sierra_record in reader:
         # TODO: check the ~220 records not having any data to bring over
 
         # current record Id. Upper so isbns will be matched.
