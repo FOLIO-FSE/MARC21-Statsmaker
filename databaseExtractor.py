@@ -33,7 +33,6 @@ def write_rec(out_file, rec):
     try:
         mrc = rec.as_marc()
         out_file.write(mrc)
-        print("write")
     except Exception as ee:
         print("Något gick fel med att spara {}".format(rec['001']))
         print(ee, flush=True)
