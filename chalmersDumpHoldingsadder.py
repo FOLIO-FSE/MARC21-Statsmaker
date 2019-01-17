@@ -5,14 +5,6 @@ import json
 from pymarc import MARCReader
 from pymarc import Field
 
-num_sierra_records = 0
-start = time.time()
-
-sierra_dump_path = sys.argv[1]
-file_out_path = sys.argv[2]
-libris_dump_path = sys.argv[3]
-temp_records = {}
-
 sigels = ['Za', 'Z', 'Zl', 'Enll']
 
 # METHODS
@@ -28,6 +20,7 @@ def code_to_sigel(code):
     else:
         raise ValueError('wrong library code supplied{}'.format(code))
 
+# Determines if record is a Database record
 def is_chalmers_db(record):
     if '698' in record:
         for fs in record.get_fields('698'):
@@ -35,14 +28,15 @@ def is_chalmers_db(record):
     else:
         return False
 
-
-def add_holding(record, sigel):
+# Create basic 852 field with only sigel.
+def create_new_holding(sigel):
     new_holding = Field(tag='852', indicators=[' ', ' '])
     new_holding.add_subfield('5', sigel)
     new_holding.add_subfield('b', sigel)
     return new_holding
 
-
+# Collect local subject headings from records and return a list of
+# new fields of those for all sigels owning the record
 def get_subjects_to_add(sierra_record, sigels):
     for field in sierra_record.get_fields('698'):
         field_copy = copy.deepcopy(field)
@@ -53,19 +47,19 @@ def get_subjects_to_add(sierra_record, sigels):
                 new_field.add_subfield(subfield[0], subfield[1])
             yield new_field
 
-
+# Given a "list" of record ids, checks if 035$a of a record exists in that list
 def in_035(recs, rec):
     return ('035' in rec and
             'a' in rec['035'] and
             rec['035']['a'].upper() in recs)
 
-
+# Write a marc record to file
 def write_rec(out_file, rec):
     try:
         mrc = rec.as_marc()
         out_file.write(mrc)
     except Exception as ee:
-        print("Något gick fel med att spara {}".format(rec['001']))
+        print("ERROR when saving record with 001: {}".format(rec['001']))
         print(ee, flush=True)
         print(rec)
 
@@ -83,7 +77,13 @@ def get_sigels_to_add(sierra_record):
 # END METHODS
 
 
-# Initialize counters and lists 
+# Initialize counters and lists and variables
+num_sierra_records = 0
+start = time.time()
+sierra_dump_path = sys.argv[1]
+file_out_path = sys.argv[2]
+libris_dump_path = sys.argv[3]
+temp_records = {}
 num_sierra_records = 0
 num_with_local_subjects = 0
 added_sigels = 0
@@ -118,7 +118,7 @@ with open(sierra_dump_path, 'rb') as sierra_dump:
         sigels = get_sigels_to_add(sierra_record)
         for sigel in sigels:
             added_sigels += len(sigels)
-            temp_records[iD].append(add_holding(sierra_record, sigel))
+            temp_records[iD].append(create_new_holding(sigel))
 
         # Add local subject headings to temporary record
         if '698' in sierra_record:
