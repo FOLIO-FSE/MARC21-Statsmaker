@@ -1,3 +1,5 @@
+from os import listdir
+from os.path import isfile, join
 import copy
 import sys
 import time
@@ -99,65 +101,68 @@ sierra_bib_ids = {}
 num_dupe_001s = 0
 dupe_001s = set()
 
-# Open and read Sierra dump file
-with open(sierra_dump_path, 'rb') as sierra_dump:
-    reader = MARCReader(sierra_dump, 'rb')
-    for sierra_record in reader:
-        # TODO: check the ~220 records not having any data to bring over
+# Open and read Sierra dump files
+onlyfiles = [f for f in listdir(sierra_dump_path)
+             if isfile(join(sierra_dump_path, f))]
+for file_path in onlyfiles:
+    with open(join(sierra_dump_path, file_path), 'rb') as sierra_dump:
+        reader = MARCReader(sierra_dump, 'rb')
+        for sierra_record in reader:
+            # TODO: check the ~220 records not having any data to bring over
 
-        # current record Id. Upper so isbns will be matched.
-        iD = sierra_record['001'].data.upper()
+            # current record Id. Upper so isbns will be matched.
+            iD = sierra_record['001'].data.upper()
 
-        # Add bib id (.bxxxxxx) to dictionary for later use
-        sierra_bib_ids[iD] = sierra_record['907']['a']
+            # Add bib id (.bxxxxxx) to dictionary for later use
+            sierra_bib_ids[iD] = sierra_record['907']['a']
 
-        # Create new temporary record.
-        # Data that we want to move from Sierra to Libris will be added
-        # to this temporary record.
-        # If more than one record with the same 001 exists,
-        # data will be appended to the same temporary record.
-        if iD in temp_records:
-            # print("001 Already in temp_records!! {}".format(iD))
-            num_dupe_001s += 1
-            dupe_001s.add(iD)
-        else:
-            temp_records[iD] = []
+            # Create new temporary record.
+            # Data that we want to move from Sierra to Libris will be added
+            # to this temporary record.
+            # If more than one record with the same 001 exists,
+            # data will be appended to the same temporary record.
+            if iD in temp_records:
+                # print("001 Already in temp_records!! {}".format(iD))
+                num_dupe_001s += 1
+                dupe_001s.add(iD)
+            else:
+                temp_records[iD] = []
 
-        # Add new holdings info to temporary record
-        sigels = get_sigels_to_add(sierra_record)
-        for sigel in sigels:
-            added_sigels += len(sigels)
-            temp_records[iD].append(create_new_holding(sigel))
+            # Add new holdings info to temporary record
+            sigels = get_sigels_to_add(sierra_record)
+            for sigel in sigels:
+                added_sigels += len(sigels)
+                temp_records[iD].append(create_new_holding(sigel))
 
-        # Add local subject headings to temporary record
-        # TODO: Make sure we do not add same subject headings twice
-        # in case of 001 duplicates
-        if '698' in sierra_record:
-            num_with_local_subjects += 1
-            for subject in get_subjects_to_add(sierra_record, sigels):
-                temp_records[iD].append(subject)
-        else:
-            num_without_local_subjects += 1
+            # Add local subject headings to temporary record
+            # TODO: Make sure we do not add same subject headings twice
+            # in case of 001 duplicates
+            if '698' in sierra_record:
+                num_with_local_subjects += 1
+                for subject in get_subjects_to_add(sierra_record, sigels):
+                    temp_records[iD].append(subject)
+            else:
+                num_without_local_subjects += 1
 
-        # Display progress
-        num_sierra_records += 1
-        if num_sierra_records % 10000 == 0:
-            print("{} recs/s\t{}".format(
-                round(num_sierra_records/(time.time() - start)),
-                num_sierra_records), flush=True)
+            # Display progress
+            num_sierra_records += 1
+            if num_sierra_records % 10000 == 0:
+                print("{} recs/s\t{}".format(
+                    round(num_sierra_records/(time.time() - start)),
+                    num_sierra_records), flush=True)
 
-    # Display progress and print statistics at end of Sierra file iteration
-    print("Done reading Sierra records in {}s.".format(
-        round((time.time() - start))))
-    print("\tTotal records:{}".format(num_sierra_records))
-    print("\tRecords with data to add to Libris:{}".format(len(temp_records)))
-    print("# recs without local Subject headings:\t{}".format(
-        num_without_local_subjects))
-    print("# recs with local Subject headings:\t{}".format(
-        num_with_local_subjects))
-    print("Added 852s:\t{}".format(added_sigels))
-    print("Duplicate 001:s # ids (unique):\t{}({})".format(
-        num_dupe_001s, len(dupe_001s)))
+# Display progress and print statistics at end of Sierra file iteration
+print("Done reading Sierra records in {}s.".format(
+    round((time.time() - start))))
+print("\tTotal records:{}".format(num_sierra_records))
+print("\tRecords with data to add to Libris:{}".format(len(temp_records)))
+print("# recs without local Subject headings:\t{}".format(
+    num_without_local_subjects))
+print("# recs with local Subject headings:\t{}".format(
+    num_with_local_subjects))
+print("Added 852s:\t{}".format(added_sigels))
+print("Duplicate 001:s # ids (unique):\t{}({})".format(
+    num_dupe_001s, len(dupe_001s)))
 
 
 # Initialize counters and lists for Libris file iteration
@@ -256,4 +261,4 @@ print("Libris records with local subject headings:\t\t{}".format(
     has_local_subject_heading))
 print("Both 001 and 035$a matches in Sierra (unique ids):\t{}({})".format(
     num_has_also_035_match, len(has_also_035_match)))
-# print(has_also_035_match)
+print(has_also_035_match)
