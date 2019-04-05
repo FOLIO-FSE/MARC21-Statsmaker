@@ -8,6 +8,7 @@ from pymarc import Field
 
 
 def main():
+    ''' this is where it all starts... '''
     # Initialize counters and lists and variables
     sigels = ['Za', 'Z', 'Zl', 'Enll']
     num_sierra_records = 0
@@ -15,6 +16,7 @@ def main():
     sierra_dump_path = sys.argv[1]
     file_out_path = sys.argv[2]
     libris_dump_path = sys.argv[3]
+    path_035 = sys.argv[4]
     temp_records = {}
     num_sierra_records = 0
     num_with_local_subjects = 0
@@ -23,61 +25,71 @@ def main():
     sierra_bib_ids = {}
     num_dupe_001s = 0
     dupe_001s = set()
+    num_enigma = 0
 
     # Open and read Sierra dump files
-    onlyfiles = [f for f in listdir(sierra_dump_path)
-                 if isfile(join(sierra_dump_path, f))]
-    for file_path in onlyfiles:
+    only_files = [f for f in listdir(sierra_dump_path)
+                  if isfile(join(sierra_dump_path, f))]
+    for file_path in only_files:
         with open(join(sierra_dump_path, file_path), 'rb') as sierra_dump:
             reader = MARCReader(sierra_dump, 'rb')
             for sierra_record in reader:
-                # TODO: check the ~220 records not having any data
+                try:
+                    # TODO: check the ~220 records not having any data
 
-                # current record Id. Upper so isbns will be matched.
-                iD = sierra_record['001'].data.upper()
+                    # current record Id. Upper so isbns will be matched.
+                    iD = sierra_record['001'].data.upper()
 
-                # Add bib id (.bxxxxxx) to dictionary for later use
-                sierra_bib_ids[iD] = sierra_record['907']['a']
+                    # Add sierra bib id (.bxxxxxx) to dictionary for later use
+                    sierra_bib_ids[iD] = sierra_record['907']['a']
 
-                # Create new temporary record.
-                # Data that we want to move from Sierra to Libris will be added
-                # to this temporary record.
-                # If more than one record with the same 001 exists,
-                # data will be appended to the same temporary record.
-                if iD in temp_records:
-                    # print("001 Already in temp_records!! {}".format(iD))
-                    num_dupe_001s += 1
-                    dupe_001s.add(iD)
-                else:
-                    temp_records[iD] = []
+                    # Create new temporary record.
+                    # Data that we want to move from Sierra to Libris will be
+                    # added to this temporary record.
+                    # If more than one record with the same 001 exists,
+                    # data will be appended to the same temporary record.
+                    if iD == 'FOLIOSTORAGE':
+                        num_enigma += 1
+                    elif iD in temp_records:
+                        print("001 Already in temp_records!! {}".format(iD))
+                        num_dupe_001s += 1
+                        dupe_001s.add(iD)
+                    else:
+                        temp_records[iD] = []
 
-                # Add new holdings info to temporary record
-                sigels = get_sigels_to_add(sierra_record)
-                for sigel in sigels:
-                    added_sigels += len(sigels)
-                    temp_records[iD].append(create_new_holding(sigel))
+                    # Add new holdings info to temporary record
+                    sigels = get_sigels_to_add(sierra_record)
+                    for sigel in sigels:
+                        added_sigels += len(sigels)
+                        if iD != 'FOLIOSTORAGE':
+                            temp_records[iD].append(create_new_holding(sigel))
 
-                # Add local subject headings to temporary record
-                # TODO: Make sure we do not add same subject headings twice
-                # in case of 001 duplicates
-                if '698' in sierra_record:
-                    num_with_local_subjects += 1
-                    for subject in get_subjects_to_add(sierra_record, sigels):
-                        temp_records[iD].append(subject)
-                else:
-                    num_without_local_subjects += 1
+                    # Add local subject headings to temporary record
+                    # TODO: Make sure we do not add same subject headings twice
+                    # in case of 001 duplicates
+                    if '698' in sierra_record:
+                        num_with_local_subjects += 1
+                        for subject in get_subjects_to_add(sierra_record,
+                                                           sigels):
+                            if iD != 'FOLIOSTORAGE':
+                                temp_records[iD].append(subject)
+                    else:
+                        num_without_local_subjects += 1
 
-                # Display progress
-                num_sierra_records += 1
-                if num_sierra_records % 10000 == 0:
-                    print("{} recs/s\t{}".format(
-                        round(num_sierra_records/(time.time() - start)),
-                        num_sierra_records), flush=True)
+                    # Display progress
+                    num_sierra_records += 1
+                    if num_sierra_records % 10000 == 0:
+                        print("{} recs/s\t{}".format(
+                            round(num_sierra_records/(time.time() - start)),
+                            num_sierra_records), flush=True)
+                except ValueError as value_error:
+                    print(value_error)
 
     # Display progress and print statistics at end of Sierra file iteration
     print("Done reading Sierra records in {}s.".format(
         round((time.time() - start))))
     print("\tTotal records:{}".format(num_sierra_records))
+    print("\tNumber of enigma records: {}".format(num_enigma))
     print("\tRecords with data to add to Libris:{}".format(len(temp_records)))
     print("# recs without local Subject headings:\t{}".format(
         num_without_local_subjects))
@@ -98,24 +110,32 @@ def main():
     has_local_subject_heading = 0
     num_has_also_035_match = 0
     has_also_035_match = set()
+    found_035s = []
 
     # Open result file for writing
     with open(file_out_path, 'wb+') as file_out:
-
         # Open and read Libris dump file
         with open(libris_dump_path, 'rb') as libris_dump:
             reader = MARCReader(libris_dump, 'rb')
             for libris_record in reader:
-
                 iD = libris_record['001'].data.upper()
-
+                old_id = (libris_record['035']['9'].upper()
+                          if '035' in libris_record and '9' in libris_record['035']
+                          else '')
+                # Check if 698 is something other than a database
                 has_cth_698 = ('698' in libris_record and
                                '5' in libris_record['698'] and
                                libris_record['698']['5'] in sigels)
                 if has_cth_698:
                     has_local_subject_heading += 1
                     if not is_chalmers_db(libris_record):
-                        print("Not db! {}".format(iD))
+                        print("Local subject heading in {}".format(iD))
+
+                # list current holdings
+                current_holdings = []
+                for field in libris_record.get_fields('887'):
+                    if '5' in field:
+                        current_holdings.append(field['5'])
 
                 # Remove Holdings data since we will add new.
                 libris_record.remove_fields('852')
@@ -125,23 +145,38 @@ def main():
                 if iD in temp_records:  # We have a 001 match
                     match_001 += 1
                     for temp_field in temp_records[iD]:
-                        libris_record.add_field(temp_field)
+                        if temp_field['5'] in current_holdings:
+                            libris_record.add_field(temp_field)
+                        else:
+                            print(('"new" holding for libris id {}'
+                                   ', sigel: {} current Holdings: {}')
+                                  .format(iD, temp_field['5'],
+                                          current_holdings))
                     write_rec(file_out, libris_record)
                     saved_records += 1
                     found_ids.add(iD)
                     # Check if Libris record's 035$a mathes any Sierra 001:s
-                    if in_035(temp_records, libris_record):
-                        old_id = libris_record['035']['a'].upper()
-                        num_has_also_035_match += 1
-                        has_also_035_match.add(old_id)
-                elif in_035(temp_records, libris_record):  # 035$a match
+                    if old_id in temp_records:
+                            num_has_also_035_match += 1
+                            has_also_035_match.add(old_id)
+                # Do the same if sierra 001 and Libris 035a matches
+                elif old_id in temp_records:
                     match_035 += 1
-                    old_id = libris_record['035']['a'].upper()
                     for temp_field in temp_records[old_id]:
-                        libris_record.add_field(temp_field)
+                        if temp_field['5'] in current_holdings:
+                            libris_record.add_field(temp_field)
+                        else:
+                            print('"new" holding for libris id {}, sigel: {}'
+                                  .format(iD, temp_field['5']))
+                    # write a copy of the 035 matched record for
+                    # Sierra updating.
+                    with open(path_035, 'wb+') as file_035:
+                        write_rec(file_035, libris_record)
+                    # Write to results file
                     write_rec(file_out, libris_record)
                     saved_records += 1
                     found_ids.add(old_id)
+                    found_035s.append(old_id)
                 else:
                     missing.add(iD)
 
@@ -153,30 +188,31 @@ def main():
             print_progress(num_libris_records, libris_start)
 
     # We are done. Calculate and print out some statistics if wanted
-    print("All written. The following ids where not found", flush=True)
+    print("All written. The following sierra ids where not found in Libris")
     set_sierra = set(temp_records.keys())
     unmatched = set_sierra - found_ids
     # for unmatched_id in unmatched:
     #    print(sierra_bib_ids[unmatched_id])
 
     print("001:s in Sierra with no match in 001/035a in Libris: {}".format(
-        len(unmatched)), flush=True)
-    # print(list(unmatched), flush=True)
+        len(unmatched)))
+    # print(list(unmatched))
 
-    print("Missing from Sierra:\t\t{}".format(len(missing)))
+    print("Libris records missing from Sierra:\t\t{}".format(len(missing)))
     # print(list(missing))
 
-    print("Saves:\t\t{}".format(saved_records))
+    print("Number of Saved records to be sent to Libris:\t\t{}"
+          .format(saved_records))
 
     print("Records from Sierra:\t\t{}".format(num_sierra_records))
     print("Records from Libris:\t\t{}".format(num_libris_records))
-    print("Sierras 001 i Libris 001:\t\t{}".format(match_001))
-    print("Sierras 001 i Libris 035:\t\t{}".format(match_035))
+    print("Sierras 001 in Libris 001:\t\t{}".format(match_001))
+    print("Sierras 001 in Libris 035:\t\t{}".format(match_035))
     print("Libris records with local subject headings:\t\t{}".format(
         has_local_subject_heading))
     print("Both 001 and 035$a matches in Sierra (unique ids):\t{}({})".format(
         num_has_also_035_match, len(has_also_035_match)))
-    print(has_also_035_match)
+    # print(has_also_035_match)
 
 
 def print_progress(num_records, start):
@@ -184,7 +220,7 @@ def print_progress(num_records, start):
     if num_records % 10000 == 0:
         elapsed = round(num_records/(time.time() - start))
         print("{} recs/sec\t{}".format(
-            elapsed, num_records), flush=True)
+            elapsed, num_records))
 
 
 def code_to_sigel(code):
@@ -198,7 +234,7 @@ def code_to_sigel(code):
     elif code.startswith('mat'):
         return 'Enll'
     else:
-        raise ValueError('wrong library code supplied{}'.format(code))
+        raise ValueError('wrong library code supplied {}'.format(code))
 
 
 def is_chalmers_db(record):
@@ -236,11 +272,14 @@ def get_subjects_to_add(sierra_record, sigels):
 
 
 def in_035(recs, rec):
-    '''Given a "list" of record ids, checks if 035$a of a record exists in
+    '''Given a "list" of record ids, checks if 035$9 of a record exists in
     that list'''
-    return ('035' in rec and
-            'a' in rec['035'] and
-            rec['035']['a'].upper() in recs)
+    if '035' not in rec:
+        return False
+    for subfield in rec['035'].get_subfields('9', 'a'):
+        if subfield and subfield.upper() in recs:
+            return True
+    return False
 
 
 def write_rec(out_file, rec):
@@ -250,7 +289,7 @@ def write_rec(out_file, rec):
         out_file.write(mrc)
     except Exception as ee:
         print("ERROR when saving record with 001: {}".format(rec['001']))
-        print(ee, flush=True)
+        print(ee)
         print(rec)
 
 
