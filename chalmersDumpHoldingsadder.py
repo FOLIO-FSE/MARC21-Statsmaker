@@ -35,6 +35,7 @@ def main():
         with open(join(sierra_dump_path, file_path), 'rb') as sierra_dump:
             reader = MARCReader(sierra_dump, 'rb')
             for sierra_record in reader:
+                
                 # current record Id. Upper so isbns will be matched.
                 iD = sierra_record['001'].data.upper()
 
@@ -69,12 +70,10 @@ def main():
                         temp_records[iD].append(create_new_holding('Z'))
 
                     # Add local subject headings to temporary record
-                    # TODO: Make sure we do not add same subject headings twice
-                    # in case of 001 duplicates
                     if '698' in sierra_record:
                         num_with_local_subjects += 1
-                        for subject in get_subjects_to_add(sierra_record,
-                                                           sigels):
+                        for subject in set(get_subjects_to_add(sierra_record,
+                                                               sigels)):
                             if iD != 'FOLIOSTORAGE':
                                 temp_records[iD].append(subject)
                     else:
@@ -114,6 +113,7 @@ def main():
     num_has_also_035_match = 0
     has_also_035_match = set()
     found_035s = []
+    removed_fields = {}
     print("Begin reading Libris File")
     # Open result file for writing
     with open(file_out_path, 'wb+') as file_out:
@@ -121,34 +121,26 @@ def main():
         with open(libris_dump_path, 'rb') as libris_dump:
             reader = MARCReader(libris_dump, 'rb')
             for libris_record in reader:
+                is_db = is_chalmers_db(libris_record)
                 iD = libris_record['001'].data.upper()
                 old_id = (libris_record['035']['9'].upper()
                           if '035' in libris_record and '9' in libris_record['035']
                           else '')
                 current_holdings = get_current_holdings(libris_record)
-
-                # Remove Holdings data since we will add new.
-                # But save 852s for Databases
-                if is_chalmers_db(libris_record):
+                if is_db:
                     print("Keeping DB Libris 852 for {}".format(iD))
                 else:
-                    libris_record.remove_fields('852')
-                libris_record.remove_fields('866')
-                # Remove unwanted Holdings fields
-                tags_to_delete = ['041', '082', '084', '541', '562', '563',
-                                  '599', '600', '610', '611', '630', '651',
-                                  '852', '863', '866', '876', '949']
-                fields_to_delete = libris_record.get_fields(tags_to_delete)
-                for field in fields_to_delete:
-                    if '5' in field and field['5'] in current_holdings:
-                        libris_record.remove_fields(field)
+                    # remove unwanted holding fields for all records but DB:s
+                    tags_to_delete_not_db = ['500', '506', '520', '852', '856']
+                    for t in tags_to_delete_not_db:
+                        delete_by_tag(libris_record, t)
 
-                tags_to_delete_not_db = ['500', '506', '520', '856']
-                fields_to_delete_no_db = libris_record.get_fields(tags_to_delete_not_db)
-                for field in fields_to_delete_no_db:
-                    if (not is_chalmers_db(libris_record) and '5' in field
-                            and field['5'] in current_holdings):
-                        libris_record.remove_fields(field)
+                # Remove unwanted Holdings fields for all records
+                tags_to_delete = ['040', '041', '082', '084', '541', '562',
+                                  '563', '599', '600', '610', '611', '630',
+                                  '651', '863', '866', '876', '949']
+                for t in tags_to_delete:
+                    delete_by_tag(libris_record, t)
 
                 # Add fields from temporary records to Libris record
                 if iD in temp_records:  # We have a 001 match
@@ -201,7 +193,7 @@ def main():
     unmatched = set_sierra - found_ids
     for unmatched_id in unmatched:
         print(sierra_bib_ids[unmatched_id])
-
+    print("removed fields from LIBRIS recs:\n{}".format(removed_fields))
     print("001:s in Sierra with no match in 001/035a in Libris: {}"
           .format(len(unmatched)))
     print(list(unmatched))
@@ -221,6 +213,17 @@ def main():
         num_has_also_035_match, len(has_also_035_match)))
     print(has_also_035_match)
     print('============================')
+
+
+def delete_by_tag(record, tag):
+    num_f_start = len(record.get_fields())
+    fs = record.get_fields(tag)
+    for f in [f for f in fs if '5' in f]:
+        record.remove_field(f)
+    num_f_end = len(record.get_fields())
+    # if (num_f_start-num_f_end) > 0:
+        # print("Successfully removed {} fields {} from {}"
+        #       .format(num_f_start-num_f_end, tag, record['001']))
 
 
 def print_hold_diff(libris_record, sierra_record):
@@ -281,12 +284,14 @@ def is_chalmers_db(record):
     '''Determines if record is a Database record'''
     if '698' in record:
         for fs in record.get_fields('698'):
-            return ('5' in fs
-                    and 'b' in fs
-                    and fs['5'] == 'Z'
-                    and fs['b'] == 'ZDBAS')
-    else:
-        return False
+            is_db = ('5' in fs
+                     and 'b' in fs
+                     and fs['5'] == 'Z'
+                     and fs['b'] == 'ZDBAS')
+            if is_db:
+                print("DB! {} {}".format(fs, record['001']))
+                return True
+    return False
 
 
 def create_new_holding(sigel):
