@@ -76,7 +76,7 @@ def main():
                     if '698' in sierra_record:
                         num_with_local_subjects += 1
                         temp_records[iD].extend(get_subjects(sierra_record,
-                                                             sigels))
+                                                             sigels_in_sierra))
                     else:
                         num_without_local_subjects += 1
 
