@@ -18,7 +18,7 @@ def main():
     file_out_path = sys.argv[2]
     libris_dump_path = sys.argv[3]
     path_035 = sys.argv[4]
-    temp_records = {}
+    temp_records = {}  # Holdings info derived from Sierra records
     num_sierra_records = 0
     num_with_local_subjects = 0
     added_sigels = 0
@@ -35,7 +35,7 @@ def main():
         with open(join(sierra_dump_path, file_path), 'rb') as sierra_dump:
             reader = MARCReader(sierra_dump, 'rb')
             for sierra_record in reader:
-                
+
                 # current record Id. Upper so isbns will be matched.
                 iD = sierra_record['001'].data.upper()
 
@@ -43,28 +43,31 @@ def main():
                     # Add sierra bib id (.bxxxxxx) to dictionary for later use
                     sierra_bib_ids[iD] = sierra_record['907']['a']
 
-                    # Create new temporary record.
-                    # Data that we want to move from Sierra to Libris will be
-                    # added to this temporary record.
-                    # If more than one record with the same 001 exists,
-                    # data will be appended to the same temporary record.
                     if iD == 'FOLIOSTORAGE':
+                        # If enigma record. just count it and then leave
+                        # the for loop
                         num_enigma += 1
+                        continue
                     elif iD in temp_records:
+                        # If more than one record with the same 001 exists,
+                        # data will be appended to the same temporary record.
                         print("001 Already in temp_records!! {}".format(iD))
                         num_dupe_001s += 1
-                        dupe_001s.add(iD)
+                        dupe_001s.add(iD)  # Add Id for late print out.
                     else:
+                        # Create new temporary record.
+                        # Data that we want to move from Sierra to Libris
+                        # will be added to this temporary record.
                         temp_records[iD] = []
 
-                    # Add new holdings info to temporary record
-                    sigels = get_sigels_to_add(sierra_record)
-                    for sigel in sigels:
-                        added_sigels += len(sigels)
-                        if iD != 'FOLIOSTORAGE':
-                            temp_records[iD].append(create_new_holding(sigel))
+                    # Add new holdings info to temporary record in the form of
+                    # sigels only.
+                    sigels_in_sierra = get_sigels_to_add(sierra_record)
+                    for sigel in sigels_in_sierra:
+                        added_sigels += len(sigels_in_sierra)
+                        temp_records[iD].append(create_new_holding(sigel))
 
-                    # Add databases even if they do not have  sigel
+                    # Add databases even if they do not have sigel
                     if is_chalmers_db(sierra_record):
                         print("Added database to Sierra records")
                         temp_records[iD].append(create_new_holding('Z'))
@@ -72,10 +75,8 @@ def main():
                     # Add local subject headings to temporary record
                     if '698' in sierra_record:
                         num_with_local_subjects += 1
-                        for subject in set(get_subjects_to_add(sierra_record,
-                                                               sigels)):
-                            if iD != 'FOLIOSTORAGE':
-                                temp_records[iD].append(subject)
+                        temp_records[iD].extend(get_subjects(sierra_record,
+                                                             sigels))
                     else:
                         num_without_local_subjects += 1
 
@@ -89,18 +90,18 @@ def main():
                     print("Värdefel: {} för {}".format(value_error, iD))
 
     # Display progress and print statistics at end of Sierra file iteration
-    print("Done reading Sierra records in {}s.".format(
-        round((time.time() - start))))
+    print("Done reading Sierra records in {}s."
+          .format(round((time.time() - start))))
     print("\tTotal records:{}".format(num_sierra_records))
     print("\tNumber of enigma records: {}".format(num_enigma))
     print("\tRecords with data to add to Libris:{}".format(len(temp_records)))
-    print("# recs without local Subject headings:\t{}".format(
-        num_without_local_subjects))
-    print("# recs with local Subject headings:\t{}".format(
-        num_with_local_subjects))
+    print("# recs without local Subject headings:\t{}"
+          .format(num_without_local_subjects))
+    print("# recs with local Subject headings:\t{}"
+          .format(num_with_local_subjects))
     print("Added 852s:\t{}".format(added_sigels))
-    print("Duplicate 001:s # ids (unique):\t{}({})".format(
-        num_dupe_001s, len(dupe_001s)))
+    print("Duplicate 001:s # ids (unique):\t{}({})"
+          .format(num_dupe_001s, len(dupe_001s)))
     # Initialize counters and lists for Libris file iteration
     missing = []
     saved_records = 0
@@ -114,7 +115,6 @@ def main():
     has_also_035_match = set()
     found_035s = []
     removed_fields = {}
-    print("Begin reading Libris File")
     # Open result file for writing
     with open(file_out_path, 'wb+') as file_out:
         # Open and read Libris dump file
@@ -124,13 +124,14 @@ def main():
                 is_db = is_chalmers_db(libris_record)
                 iD = libris_record['001'].data.upper()
                 old_id = (libris_record['035']['9'].upper()
-                          if '035' in libris_record and '9' in libris_record['035']
-                          else '')
+                          if ('035' in libris_record
+                              and '9' in libris_record['035']) else '')
                 current_holdings = get_current_holdings(libris_record)
+
+                # remove unwanted holding fields for all records but DB:s
                 if is_db:
                     print("Keeping DB Libris 852 for {}".format(iD))
                 else:
-                    # remove unwanted holding fields for all records but DB:s
                     tags_to_delete_not_db = ['500', '506', '520', '852', '856']
                     for t in tags_to_delete_not_db:
                         delete_by_tag(libris_record, t)
@@ -143,26 +144,37 @@ def main():
                     delete_by_tag(libris_record, t)
 
                 # Add fields from temporary records to Libris record
+                # For 001 - 001 matches
                 if iD in temp_records:  # We have a 001 match
+                    # print out any diff in Holdings info on Sigel level
                     print_hold_diff(libris_record, temp_records[iD])
-                    match_001 += 1
+                    
                     for temp_field in temp_records[iD]:
                         if temp_field['5'] in current_holdings:
                             libris_record.add_field(temp_field)
+
+                    # Write record to disc
                     write_rec(file_out, libris_record)
-                    saved_records += 1
-                    found_ids.add(iD)
                     # Check if Libris record's 035$a mathes any Sierra 001:s
                     if old_id in temp_records:
                             num_has_also_035_match += 1
                             has_also_035_match.add(old_id)
-                # Do the same if sierra 001 and Libris 035a matches
+                    saved_records += 1
+                    found_ids.add(iD)
+                    match_001 += 1
+
+                # Add fields from temporary records to Libris record
+                # For 001 - 035a matches
                 elif old_id in temp_records:
+                    # print out any diff in Holdings info on Sigel level
                     print_hold_diff(libris_record, temp_records[old_id])
-                    match_035 += 1
+
                     for temp_field in temp_records[old_id]:
                         if temp_field['5'] in current_holdings:
                             libris_record.add_field(temp_field)
+
+                    # write record to another file for 001 replacement in
+                    # Sierra
                     with open(path_035, 'ab+') as file_035:
                         write_rec(file_035, libris_record)
 
@@ -171,6 +183,10 @@ def main():
                     saved_records += 1
                     found_ids.add(old_id)
                     found_035s.append(old_id)
+                    match_035 += 1
+
+                # No match. Get the Libris instance and holdings Ids for
+                # Print out.
                 else:
                     for id_placeholder in libris_record.get_fields('887'):
                         if '5' in id_placeholder:
@@ -187,7 +203,7 @@ def main():
             # Display progress at end of iteration
             print_progress(num_libris_records, libris_start)
 
-    # We are done. Calculate and print out some statistics if wanted
+    # We are done. Calculate and print out some statistics
     print("All written. The following sierra ids where not found in Libris")
     set_sierra = set(temp_records.keys())
     unmatched = set_sierra - found_ids
@@ -199,7 +215,8 @@ def main():
     print(list(unmatched))
     print('============================')
     print("Libris records missing from Sierra:\t\t{}".format(len(missing)))
-    print(list(missing))
+    for miss in list(missing):
+        print("{}\t{}".format(miss[0], miss[1]))
     print('============================')
     print("Number of Saved records to be sent to Libris:\t\t{}"
           .format(saved_records))
@@ -216,26 +233,29 @@ def main():
 
 
 def delete_by_tag(record, tag):
-    num_f_start = len(record.get_fields())
     fs = record.get_fields(tag)
     for f in [f for f in fs if '5' in f]:
         record.remove_field(f)
-    num_f_end = len(record.get_fields())
     # if (num_f_start-num_f_end) > 0:
         # print("Successfully removed {} fields {} from {}"
         #       .format(num_f_start-num_f_end, tag, record['001']))
 
 
 def print_hold_diff(libris_record, sierra_record):
+    '''compares the sigels held and prints out any differences between
+    Sierra and Libris'''
     libris_holdings = get_current_holdings(libris_record)
     sierra_holdings = set()
     for field in sierra_record:
         if '5' in field:
             sierra_holdings.add(field['5'])
-    less_in_xl = libris_holdings-sierra_holdings
-    if less_in_xl:
+
+    # Libris has something that Sierra has not.
+    more_in_xl = libris_holdings-sierra_holdings
+    if more_in_xl:
         for id_placeholder in libris_record.get_fields('887'):
-            if '5' in id_placeholder and id_placeholder['5'] in less_in_xl:
+            if '5' in id_placeholder and id_placeholder['5'] in more_in_xl:
+                # Get that broken libris holdings id out of there!
                 a = id_placeholder['a']
                 jstring = a.replace('{lrub}', '{')
                 jstring = jstring.replace('{lcub}', '}')
@@ -245,7 +265,9 @@ def print_hold_diff(libris_record, sierra_record):
                       .format(libris_holdings, sierra_holdings,
                               libris_record['001'],
                               xl_id, id_placeholder['5']))
-    elif sierra_holdings-libris_holdings:
+
+    # Sierra has something Libris has not
+    if sierra_holdings-libris_holdings:
         print("More holdings in Sierra: {} than in Libris {} for {}"
               .format(sierra_holdings, libris_holdings, libris_record['001']))
 
@@ -302,9 +324,10 @@ def create_new_holding(sigel):
     return new_holding
 
 
-def get_subjects_to_add(sierra_record, sigels):
-    '''Collect local subject headings from records and return a list of
+def get_subjects(sierra_record, sigels):
+    '''Collect local subject headings from records and return a set of
     new fields of those for all sigels owning the record'''
+    subjects_to_return = set()
     for field in sierra_record.get_fields('698'):
         field_copy = copy.deepcopy(field)
         for sigel in sigels:
@@ -313,7 +336,8 @@ def get_subjects_to_add(sierra_record, sigels):
             for subfield in field_copy:
                 if subfield[0] != '5':
                     new_field.add_subfield(subfield[0], subfield[1])
-            yield new_field
+                subjects_to_return.add(new_field)
+    return subjects_to_return
 
 
 def in_035(recs, rec):
