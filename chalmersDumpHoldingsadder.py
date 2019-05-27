@@ -104,6 +104,7 @@ def main():
           .format(num_dupe_001s, len(dupe_001s)))
     # Initialize counters and lists for Libris file iteration
     missing = []
+    replace_001s = []
     saved_records = 0
     match_001 = 0
     match_035 = 0
@@ -148,7 +149,7 @@ def main():
                 if iD in temp_records:  # We have a 001 match
                     # print out any diff in Holdings info on Sigel level
                     print_hold_diff(libris_record, temp_records[iD])
-                    
+
                     for temp_field in temp_records[iD]:
                         if temp_field['5'] in current_holdings:
                             libris_record.add_field(temp_field)
@@ -177,7 +178,7 @@ def main():
                     # Sierra
                     with open(path_035, 'ab+') as file_035:
                         write_rec(file_035, libris_record)
-
+                    replace_001s.append([old_id, sierra_bib_ids[old_id], iD])
                     # Write to results file
                     write_rec(file_out, libris_record)
                     saved_records += 1
@@ -230,6 +231,9 @@ def main():
         num_has_also_035_match, len(has_also_035_match)))
     print(has_also_035_match)
     print('============================')
+    print("Replace 001 in Sierra  with the following id")
+    for repl in replace_001s:
+        print("{}\t{}\t{}".format(*repl))
 
 
 def delete_by_tag(record, tag):
