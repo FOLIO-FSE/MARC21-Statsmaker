@@ -4,6 +4,13 @@ import glob
 from pymarc import MARCReader
 
 
+def add_stats(stats, a):
+    if a not in stats:
+        stats[a] = 1
+    else:
+        stats[a] += 1
+
+
 def type_of_record(record):
     l06 = record.leader[6]
     l07 = record.leader[7]
@@ -48,7 +55,7 @@ def print_field_and_record_data(name, record, field, record_index):
           (field.indicators[0]
            if field and field.indicators and len(field.indicators) > 0
            else '-') + '\t' +
-          (field.indicators[1] if field and field.indicators and len(field.indicators) >1 else '-') + '\t' +
+          (field.indicators[1] if field and field.indicators and len(field.indicators) > 1 else '-') + '\t' +
           (field.tag if field else '-') + '\t' +
           concatenate_subfields(field) + '\t' +
           (type_of_record(record)) + '\t' +
@@ -58,7 +65,7 @@ def print_field_and_record_data(name, record, field, record_index):
           (record['907']['a'] if '907' in record and 'a' in record['907']
            else '-') + '\t' +
           (record['907']['b'] if '907' in record and 'b' in record['907']
-           else '-') + '\t' )
+           else '-') + '\t')
 
 
 def print_fields_by_criteria(name, record, fields_to_print, record_index):
@@ -71,32 +78,22 @@ def print_fields_by_criteria(name, record, fields_to_print, record_index):
 
 i = 0
 start = time.time()
+f990a = {}
+f998d = {}
+f998e = {}
 
 files = glob.glob(sys.argv[1])[::-1]
-logFile = open(sys.argv[2], "w")
-logFile.write("{}".format(files))
+print(files)
 
 for f in files:
     with open(f, 'rb') as fh:
         reader = MARCReader(fh, 'rb')
         for rec in reader:
             i += 1
+
             if i % 1000 == 0:
                 elapsed = i/(time.time() - start)
-                logFile.write("{}\t{}\t{}\n".format(elapsed, i, f))
-#           print_fields_by_criteria("696", rec, rec.get_fields('696'), i)
-#           print_fields_by_criteria("697", rec, rec.get_fields('697'), i)
-#           print_fields_by_criteria("698", rec, rec.get_fields('698'), i)
-#  	    print_fields_by_criteria("951", rec, rec.get_fields('951'), i)
-# 	    print_fields_by_criteria("020", rec, rec.get_fields('020'), i)
-#            print_fields_by_criteria("852", rec, rec.get_fields('852'), i)
-            print_fields_by_criteria("ContributorType", rec, rec.get_fields('100'), i)
-            print_fields_by_criteria("ContributorType", rec, rec.get_fields('700'), i)
-            print_fields_by_criteria("Relationship", rec, rec.get_fields('110'), i)
-            print_fields_by_criteria("Relationship", rec, rec.get_fields('710'), i)
-            print_fields_by_criteria("Relationship", rec, rec.get_fields('111'), i)
-            print_fields_by_criteria("Relationship", rec, rec.get_fields('711'), i)
+                print("{}\t{}\t{}\n".format(elapsed, i, f))
 
-logFile.write("{} records fetched in {} seconds".format(i,
-                                                        (time.time() - start)))
-logFile.close()
+print("{} records fetched in {} seconds".format(i,
+                                                (time.time() - start)))
